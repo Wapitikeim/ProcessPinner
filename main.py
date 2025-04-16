@@ -4,6 +4,9 @@ from tkinter import PhotoImage
 
 import psutil
 
+updateIntervall = 1 #in Seconds
+monitoredProcesses = ["steam", "spotify", "opera", "hunt"]
+
 def getListOfActiveProcesses() -> list[tuple[str, int]]:
     activeProcesses = []
     for process in psutil.process_iter(["pid", "name"]):
@@ -35,22 +38,16 @@ def killProcessByName(name: str) -> None:
             print(f"[-] Failed to kill {proc_name} (PID {pid}): {e}")
 
 def updateStatus() -> None:
-    if checkIfProcessIsRunning("steam"):
-        onOffLabel.config(image=icons["On"])
-        onOffLabel.image = icons["On"]
-    else:
-        onOffLabel.config(image=icons["Off"])
-        onOffLabel.image = icons["Off"]
+    for name, label in monitoredProcessesLabels.items():
+        is_running = checkIfProcessIsRunning(name)
+        if is_running:
+            label['label'].config(image=icons["On"])
+            label['label'].image = icons["On"]
+        else:
+            label['label'].config(image=icons["Off"])
+            label['label'].image = icons["Off"]
     
-    if checkIfProcessIsRunning("spotify"):
-        onOffLabel2.config(image=icons["On"])
-        onOffLabel2.image = icons["On"]
-    else:
-        onOffLabel2.config(image=icons["Off"])
-        onOffLabel2.image = icons["Off"]
-
-
-    root.after(1000, updateStatus)
+    root.after(updateIntervall * 1000, updateStatus)
 
 
 
@@ -67,18 +64,24 @@ if __name__ == "__main__":
 
     frame = ttk.Frame(root, padding=5) #padding = Rand
     frame.grid()
-    ttk.Label(frame, text="Steam").grid(column=0, row=0)
-    ttk.Label(frame, text="Spotify").grid(column=0, row=1)
 
-    onOffLabel = Label(frame, image=icons["Neutral"])
-    onOffLabel.grid(column=1,row=0)
+    monitoredProcessesLabels = {}
+    
+    for i,processName in enumerate(monitoredProcesses):
+        #Name and Label
+        ttk.Label(frame,text=processName.capitalize()).grid(column=0, row=i)
 
-    onOffLabel2 = Label(frame, image=icons["Neutral"])
-    onOffLabel2.grid(column=1,row=1)
+        #Status Label
+        statusLabel = Label(frame, image=icons["Neutral"])
+        statusLabel.grid(column=1, row=i)
 
-    ttk.Button(frame, text="Kill", command=lambda:killProcessByName("steam")).grid(column=2,row=0)
-    ttk.Button(frame, text="Kill", command=lambda:killProcessByName("spotify")).grid(column=2,row=1)
-    ttk.Button(frame, text="Quit", command=root.destroy).grid(column=5, row=3)
+        #Close Button
+        ttk.Button(frame, text="Close", command=lambda name=processName: killProcessByName(name)).grid(column=2, row=i)
+
+        #Dict for Update
+        monitoredProcessesLabels[processName] = {'label' : statusLabel}
+
+    ttk.Button(frame, text="Quit", command=root.destroy).grid(column=5, row=len(monitoredProcesses))
 
     updateStatus()
     root.mainloop()
