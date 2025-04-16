@@ -58,7 +58,11 @@ def updateStatus() -> None:
 #Main
 if __name__ == "__main__":
     root = Tk()
-    
+    root.title("Process Killer")
+    #Icon
+    icon = PhotoImage(file = "assets/ico.png")
+    root.wm_iconphoto(False, icon)
+        
     #Icons brauchen root window
     icons = {
     "On": PhotoImage(file="assets/On.png"),
