@@ -5,7 +5,8 @@ from tkinter import PhotoImage
 import psutil
 
 updateIntervall = 1 #in Seconds
-monitoredProcesses = ["steam", "spotify", "opera", "hunt"]
+activeProcessesList = []
+monitoredProcesses = ["steam", "spotify", "opera", "hunt", "discord"]
 
 def getListOfActiveProcesses() -> list[tuple[str, int]]:
     activeProcesses = []
@@ -19,13 +20,13 @@ def getListOfActiveProcesses() -> list[tuple[str, int]]:
     return activeProcesses
 
 def checkIfProcessIsRunning(name: str) -> bool:
-    filteredProcesses = [p for p in getListOfActiveProcesses() if name in p[0].lower()]
+    filteredProcesses = [p for p in activeProcessesList if name in p[0].lower()]
     if not filteredProcesses:
         return 0
     return 1
 
 def killProcessByName(name: str) -> None:
-    filteredProcesses = [p for p in getListOfActiveProcesses() if name in p[0].lower()]
+    filteredProcesses = [p for p in activeProcessesList if name in p[0].lower()]
     if not filteredProcesses:
         print(f"Process {name} was not running.")
         return
@@ -37,7 +38,12 @@ def killProcessByName(name: str) -> None:
         except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
             print(f"[-] Failed to kill {proc_name} (PID {pid}): {e}")
 
+def updateActiveProcesses() -> None:
+    global activeProcessesList
+    activeProcessesList = getListOfActiveProcesses()
+
 def updateStatus() -> None:
+    updateActiveProcesses()
     for name, label in monitoredProcessesLabels.items():
         is_running = checkIfProcessIsRunning(name)
         if is_running:
@@ -48,8 +54,6 @@ def updateStatus() -> None:
             label['label'].image = icons["Off"]
     
     root.after(updateIntervall * 1000, updateStatus)
-
-
 
 #Main
 if __name__ == "__main__":
@@ -64,6 +68,8 @@ if __name__ == "__main__":
 
     frame = ttk.Frame(root, padding=5) #padding = Rand
     frame.grid()
+
+    updateActiveProcesses()
 
     monitoredProcessesLabels = {}
     
