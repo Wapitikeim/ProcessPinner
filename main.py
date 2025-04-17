@@ -14,8 +14,11 @@ import psutil
 
 updateIntervall = 1 #in Seconds
 activeProcessesList = []
+monitoredProcessesLabels = {}
 monitoredProcesses = []
+monitorWidgets = []
 monitoredProcessesFileLocation = "data/monitoredProcesses.json"
+
 
 
 def getListOfActiveProcesses() -> list[tuple[str, int]]:
@@ -96,7 +99,7 @@ def saveCurrentMonitoredProcessesToFile() -> None:
     with open(monitoredProcessesFileLocation, "w") as f:
         json.dump(monitoredProcesses, f, indent=4)
 
-#Add Process logic
+#Process logic for Combobox
 def addSelectedProcessToMonitor() -> None:
     #Adds the selected process (from dropdown) to the monitored list.
     name = dropdown_var.get().strip()
@@ -119,9 +122,70 @@ def addSelectedProcessToMonitor() -> None:
     saveCurrentMonitoredProcessesToFile()
     print(f"[+] Added '{name}' to monitored list.")
 
+    #Rebuild Labels
+    rebuildMonitoredProcessWidgets()
+
     # Update display (Status-Labels, Buttons, etc.)
     updateStatus()
 
+#Process logic for Remove Button
+def removeProcessFromList(processName: str) -> None:
+    #Removes the given process from the monitored list and refreshes the UI.
+    if processName in monitoredProcesses:
+        monitoredProcesses.remove(processName)
+        saveCurrentMonitoredProcessesToFile()
+        rebuildMonitoredProcessWidgets()
+        print(f"[-] Removed '{processName}' from monitored list.")
+    else:
+        print(f"[!] '{processName}' is not in the monitored list.")
+
+#Rebuild GUI
+def rebuildMonitoredProcessWidgets() -> None:
+    global monitoredProcessesLabels, monitorWidgets
+
+    # Remove existing process widgets
+    for widget in monitorWidgets:
+        widget.destroy()
+
+    monitorWidgets.clear()
+    monitoredProcessesLabels.clear()
+
+    # Rebuild from current monitoredProcesses
+    for i, processName in enumerate(monitoredProcesses):
+        # Name label
+        name_label = ttk.Label(frame, text=processName.capitalize())
+        name_label.grid(column=0, row=i)
+        monitorWidgets.append(name_label)
+
+        # Status label
+        status_label = Label(frame, image=icons["Neutral"])
+        status_label.grid(column=1, row=i)
+        monitorWidgets.append(status_label)
+
+        # Kill button
+        kill_button = ttk.Button(frame, text="Close", command=lambda name=processName: killProcessByName(name))
+        kill_button.grid(column=2, row=i)
+        monitorWidgets.append(kill_button)
+
+        # Remove button
+        remove_button = ttk.Button(frame, text="Remove", command=lambda name=processName: removeProcessFromList(name))
+        remove_button.grid(column=3, row=i)
+        monitorWidgets.append(remove_button)
+
+        # Store reference for status updates
+        monitoredProcessesLabels[processName] = {'label': status_label}
+    
+    #Reposition Combobox / Add / Quit Button
+    # Add dropdown and buttons BELOW the process rows
+    last_row = len(monitoredProcesses) + 1
+
+    unique_names = sorted(set(name for name, _ in activeProcessesList), key=lambda s: s.lower())
+    dropdown_var.set("")  # reset selection
+    dropdown["values"] = unique_names
+    dropdown.grid(column=0, row=last_row, columnspan=2)
+
+    add_button.grid(column=2, row=last_row)
+    quit_button.grid(column=5, row=last_row)
 
 #Main
 if __name__ == "__main__":
@@ -131,7 +195,7 @@ if __name__ == "__main__":
     icon = PhotoImage(file = "assets/ico.png")
     root.wm_iconphoto(False, icon)
 
-    #Icons brauchen root window
+    #Icons need existing root window
     icons = {
     "On": PhotoImage(file="assets/On.png"),
     "Off": PhotoImage(file="assets/Off.png"),
@@ -145,30 +209,15 @@ if __name__ == "__main__":
 
     monitoredProcesses = loadMonitoredProcessesFromFile()
     
-    monitoredProcessesLabels = {}
-    
-    for i,processName in enumerate(monitoredProcesses):
-        #Name and Label
-        ttk.Label(frame,text=processName.capitalize()).grid(column=0, row=i)
-
-        #Status Label
-        statusLabel = Label(frame, image=icons["Neutral"])
-        statusLabel.grid(column=1, row=i)
-
-        #Close Button
-        ttk.Button(frame, text="Close", command=lambda name=processName: killProcessByName(name)).grid(column=2, row=i)
-
-        #Dict for Update
-        monitoredProcessesLabels[processName] = {'label' : statusLabel}
-
-    #Dropdown for Processes
+    #Dropdown "Combobox"
     uniqueNames = sorted(set(name for name, _ in activeProcessesList), key=lambda s: s.lower())
     dropdown_var = StringVar()
-    dropdown = Combobox(frame, textvariable=dropdown_var, values=uniqueNames, state="readonly")
-    dropdown.grid(column=0, row=10, columnspan=2)
-    ttk.Button(frame, text="Add", command=addSelectedProcessToMonitor).grid(column=2, row=10)
+    dropdown = Combobox(frame, textvariable=dropdown_var, state="readonly")
+    #Add/Quit Buttons
+    add_button = ttk.Button(frame, text="Add", command=addSelectedProcessToMonitor)
+    quit_button = ttk.Button(frame, text="Quit", command=root.destroy)
 
-    ttk.Button(frame, text="Quit", command=root.destroy).grid(column=5, row=len(monitoredProcesses))
+    rebuildMonitoredProcessWidgets()
 
     updateStatus()
     root.mainloop()
