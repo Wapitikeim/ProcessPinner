@@ -2,11 +2,17 @@ from tkinter import *
 from tkinter import ttk
 from tkinter import PhotoImage
 
+#Saving/Loading
+import json
+import os 
+
 import psutil
 
 updateIntervall = 1 #in Seconds
 activeProcessesList = []
-monitoredProcesses = ["steam", "spotify", "opera", "hunt", "discord"]
+monitoredProcesses = []
+monitoredProcessesFileLocation = "data/monitoredProcesses.json"
+
 
 def getListOfActiveProcesses() -> list[tuple[str, int]]:
     activeProcesses = []
@@ -55,6 +61,33 @@ def updateStatus() -> None:
     
     root.after(updateIntervall * 1000, updateStatus)
 
+#Loading / Saving
+def loadMonitoredProcessesFromFile() -> list[str]:
+    #Try to open file location
+    if not os.path.exists(monitoredProcessesFileLocation):
+        default_list = ["opera", "spotify"]
+        with open(monitoredProcessesFileLocation, "w") as f:
+            json.dump(default_list, f, indent=4)
+        return default_list
+    # Try to load Data
+    try:
+        with open(monitoredProcessesFileLocation, "r") as f:
+            data = json.load(f)
+            # Check if structure contains only Strings
+            if isinstance(data, list) and all(isinstance(item, str) for item in data):
+                return data
+            else:
+                print("[!] Structure of monitored processes json faulty – fallback to default list")
+                return ["opera", "spotify"]
+    except Exception as e:
+        print(f"[!] Cannot load monitored process file: {e}")
+        return ["opera", "spotify"]
+
+def saveCurrentMonitoredProcessesToFile() -> None:
+    #Saves the current monitoredProcesses list to JSON file.
+    with open(monitoredProcessesFileLocation, "w") as f:
+        json.dump(monitoredProcesses, f, indent=4)
+
 #Main
 if __name__ == "__main__":
     root = Tk()
@@ -62,7 +95,7 @@ if __name__ == "__main__":
     #Icon
     icon = PhotoImage(file = "assets/ico.png")
     root.wm_iconphoto(False, icon)
-        
+
     #Icons brauchen root window
     icons = {
     "On": PhotoImage(file="assets/On.png"),
@@ -75,6 +108,8 @@ if __name__ == "__main__":
 
     updateActiveProcesses()
 
+    monitoredProcesses = loadMonitoredProcessesFromFile()
+    
     monitoredProcessesLabels = {}
     
     for i,processName in enumerate(monitoredProcesses):
