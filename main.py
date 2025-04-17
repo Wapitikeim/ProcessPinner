@@ -2,6 +2,10 @@ from tkinter import *
 from tkinter import ttk
 from tkinter import PhotoImage
 
+#Dropdown
+from tkinter import StringVar
+from tkinter.ttk import Combobox
+
 #Saving/Loading
 import json
 import os 
@@ -50,6 +54,7 @@ def updateActiveProcesses() -> None:
 
 def updateStatus() -> None:
     updateActiveProcesses()
+    #Refresh Labels
     for name, label in monitoredProcessesLabels.items():
         is_running = checkIfProcessIsRunning(name)
         if is_running:
@@ -58,7 +63,10 @@ def updateStatus() -> None:
         else:
             label['label'].config(image=icons["Off"])
             label['label'].image = icons["Off"]
-    
+    #Refresh Dropdown
+    uniqueNames = sorted(set(name for name, _ in activeProcessesList), key=lambda s: s.lower())
+    dropdown["values"] = uniqueNames
+    #Intervall
     root.after(updateIntervall * 1000, updateStatus)
 
 #Loading / Saving
@@ -87,6 +95,33 @@ def saveCurrentMonitoredProcessesToFile() -> None:
     #Saves the current monitoredProcesses list to JSON file.
     with open(monitoredProcessesFileLocation, "w") as f:
         json.dump(monitoredProcesses, f, indent=4)
+
+#Add Process logic
+def addSelectedProcessToMonitor() -> None:
+    #Adds the selected process (from dropdown) to the monitored list.
+    name = dropdown_var.get().strip()
+
+    if not name:
+        print("[!] No process selected.")
+        return
+
+    # Remove .exe if present
+    if name.lower().endswith(".exe"):
+        name = name[:-4]
+
+    # Check for duplicates
+    if name.lower() in (p.lower() for p in monitoredProcesses):
+        print(f"[i] '{name}' is already monitored.")
+        return
+
+    # Add, save, refresh
+    monitoredProcesses.append(name.lower())
+    saveCurrentMonitoredProcessesToFile()
+    print(f"[+] Added '{name}' to monitored list.")
+
+    # Update display (Status-Labels, Buttons, etc.)
+    updateStatus()
+
 
 #Main
 if __name__ == "__main__":
@@ -125,6 +160,13 @@ if __name__ == "__main__":
 
         #Dict for Update
         monitoredProcessesLabels[processName] = {'label' : statusLabel}
+
+    #Dropdown for Processes
+    uniqueNames = sorted(set(name for name, _ in activeProcessesList), key=lambda s: s.lower())
+    dropdown_var = StringVar()
+    dropdown = Combobox(frame, textvariable=dropdown_var, values=uniqueNames, state="readonly")
+    dropdown.grid(column=0, row=10, columnspan=2)
+    ttk.Button(frame, text="Add", command=addSelectedProcessToMonitor).grid(column=2, row=10)
 
     ttk.Button(frame, text="Quit", command=root.destroy).grid(column=5, row=len(monitoredProcesses))
 
