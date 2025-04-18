@@ -6,6 +6,9 @@ from tkinter import PhotoImage
 from tkinter import StringVar
 from tkinter.ttk import Combobox
 
+#Open Button
+import subprocess
+
 #Saving/Loading
 import json
 import os 
@@ -20,7 +23,6 @@ monitorWidgets = []
 monitoredProcessesFileLocation = "data/monitoredProcesses.json"
 
 
-
 def getListOfActiveProcesses() -> list[tuple[str, int]]:
     activeProcesses = []
     for process in psutil.process_iter(["pid", "name"]):
@@ -33,13 +35,13 @@ def getListOfActiveProcesses() -> list[tuple[str, int]]:
     return activeProcesses
 
 def checkIfProcessIsRunning(name: str) -> bool:
-    filteredProcesses = [p for p in activeProcessesList if name in p[0].lower()]
+    filteredProcesses = [p for p in activeProcessesList if name.lower() in p[0].lower()]
     if not filteredProcesses:
         return 0
     return 1
 
 def killProcessByName(name: str) -> None:
-    filteredProcesses = [p for p in activeProcessesList if name in p[0].lower()]
+    filteredProcesses = [p for p in activeProcessesList if name.lower() in p[0].lower()]
     if not filteredProcesses:
         print(f"Process {name} was not running.")
         return
@@ -51,6 +53,37 @@ def killProcessByName(name: str) -> None:
         except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
             print(f"[-] Failed to kill {proc_name} (PID {pid}): {e}")
 
+def getMainExecutablePath(process_name: str) -> str | None:
+    #Returns the most likely path to the main executable of a process.
+    candidates = []
+
+    for proc in psutil.process_iter(['name', 'exe', 'pid']):
+        try:
+            if proc.info['name'] and process_name.lower() in proc.info['name'].lower():
+                if proc.info['exe']:
+                    candidates.append(proc)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    if not candidates:
+        return None
+
+    # First priority: exact match to process_name.exe
+    expected_exe_name = f"{process_name.lower()}.exe"
+    for proc in candidates:
+        exe_path = proc.info['exe']
+        if exe_path and os.path.basename(exe_path).lower() == expected_exe_name:
+            return exe_path  # highest confidence
+
+    # Second: if all .exe paths are the same, return that
+    unique_paths = set(p.info['exe'] for p in candidates)
+    if len(unique_paths) == 1:
+        return list(unique_paths)[0]
+
+    # Third: fallback to lowest PID
+    main_proc = min(candidates, key=lambda p: p.pid)
+    return main_proc.info['exe']
+
 def updateActiveProcesses() -> None:
     global activeProcessesList
     activeProcessesList = getListOfActiveProcesses()
@@ -60,12 +93,8 @@ def updateStatus() -> None:
     #Refresh Labels
     for name, label in monitoredProcessesLabels.items():
         is_running = checkIfProcessIsRunning(name)
-        if is_running:
-            label['label'].config(image=icons["On"])
-            label['label'].image = icons["On"]
-        else:
-            label['label'].config(image=icons["Off"])
-            label['label'].image = icons["Off"]
+        label['label'].config(image=icons["On"] if is_running else icons["Off"])
+        label['label'].image = icons["On"] if is_running else icons["Off"]
     #Refresh Dropdown
     uniqueNames = sorted(set(name for name, _ in activeProcessesList), key=lambda s: s.lower())
     dropdown["values"] = uniqueNames
@@ -76,7 +105,10 @@ def updateStatus() -> None:
 def loadMonitoredProcessesFromFile() -> list[str]:
     #Try to open file location
     if not os.path.exists(monitoredProcessesFileLocation):
-        default_list = ["opera", "spotify"]
+        default_list = [
+            {"name": "opera", "path": None},
+            {"name": "spotify", "path": None}
+        ]
         with open(monitoredProcessesFileLocation, "w") as f:
             json.dump(default_list, f, indent=4)
         return default_list
@@ -84,15 +116,27 @@ def loadMonitoredProcessesFromFile() -> list[str]:
     try:
         with open(monitoredProcessesFileLocation, "r") as f:
             data = json.load(f)
-            # Check if structure contains only Strings
-            if isinstance(data, list) and all(isinstance(item, str) for item in data):
-                return data
-            else:
-                print("[!] Structure of monitored processes json faulty – fallback to default list")
-                return ["opera", "spotify"]
+
+        # Compatibility: Allow old format (list[str])
+        if isinstance(data, list):
+            formatted = []
+            for entry in data:
+                if isinstance(entry, str):
+                    formatted.append({"name": entry, "path": None})
+                elif isinstance(entry, list) and len(entry) == 2:
+                    formatted.append({"name": entry[0], "path": entry[1]})
+                elif isinstance(entry, dict) and "name" in entry:
+                    formatted.append({
+                        "name": entry["name"],
+                        "path": entry.get("path")
+                    })
+            return formatted
+
+        print("[!] Invalid monitored process format.")
+        return []
     except Exception as e:
-        print(f"[!] Cannot load monitored process file: {e}")
-        return ["opera", "spotify"]
+        print(f"[!] Failed to load monitored processes: {e}")
+        return []
 
 def saveCurrentMonitoredProcessesToFile() -> None:
     #Saves the current monitoredProcesses list to JSON file.
@@ -112,32 +156,43 @@ def addSelectedProcessToMonitor() -> None:
     if name.lower().endswith(".exe"):
         name = name[:-4]
 
-    # Check for duplicates
-    if name.lower() in (p.lower() for p in monitoredProcesses):
+    # Check for duplicate (case-insensitive)
+    if any(entry["name"].lower() == name.lower() for entry in monitoredProcesses):
         print(f"[i] '{name}' is already monitored.")
         return
 
-    # Add, save, refresh
-    monitoredProcesses.append(name.lower())
+    # Try to detect path if process is running
+    path = getMainExecutablePath(name)
+
+    monitoredProcesses.append({"name": name, "path": path})
     saveCurrentMonitoredProcessesToFile()
-    print(f"[+] Added '{name}' to monitored list.")
+    print(f"[+] Added '{name}' with path: {path}")
 
-    #Rebuild Labels
     rebuildMonitoredProcessWidgets()
-
-    # Update display (Status-Labels, Buttons, etc.)
-    updateStatus()
 
 #Process logic for Remove Button
 def removeProcessFromList(processName: str) -> None:
     #Removes the given process from the monitored list and refreshes the UI.
-    if processName in monitoredProcesses:
-        monitoredProcesses.remove(processName)
-        saveCurrentMonitoredProcessesToFile()
-        rebuildMonitoredProcessWidgets()
-        print(f"[-] Removed '{processName}' from monitored list.")
-    else:
-        print(f"[!] '{processName}' is not in the monitored list.")
+    global monitoredProcesses
+    monitoredProcesses = [p for p in monitoredProcesses if p["name"].lower() != processName.lower()]
+    saveCurrentMonitoredProcessesToFile()
+    rebuildMonitoredProcessWidgets()
+
+#Process logic for Open Button
+def openProcessByName(name: str, path: str | None) -> None:
+    if checkIfProcessIsRunning(name):
+        print(f"[i] '{name}' is already running.")
+        return
+
+    if not path or not os.path.isfile(path):
+        print(f"[!] No valid path found for '{name}' – cannot launch.")
+        return
+
+    try:
+        subprocess.Popen([path])
+        print(f"[+] Started '{name}' from '{path}'")
+    except Exception as e:
+        print(f"[!] Failed to start '{name}': {e}")
 
 #Rebuild GUI
 def rebuildMonitoredProcessWidgets() -> None:
@@ -151,29 +206,37 @@ def rebuildMonitoredProcessWidgets() -> None:
     monitoredProcessesLabels.clear()
 
     # Rebuild from current monitoredProcesses
-    for i, processName in enumerate(monitoredProcesses):
-        # Name label
-        name_label = ttk.Label(frame, text=processName.capitalize())
+    for i, entry in enumerate(monitoredProcesses):
+        name = entry["name"]
+        path = entry.get("path")
+        
+        #Name label
+        name_label = ttk.Label(frame, text=name.capitalize())
         name_label.grid(column=0, row=i)
         monitorWidgets.append(name_label)
 
-        # Status label
+        #Status Symbol
         status_label = Label(frame, image=icons["Neutral"])
         status_label.grid(column=1, row=i)
         monitorWidgets.append(status_label)
 
-        # Kill button
-        kill_button = ttk.Button(frame, text="Close", command=lambda name=processName: killProcessByName(name))
+        #Kill/Close Button
+        kill_button = ttk.Button(frame, text="Close", command=lambda n=name: killProcessByName(n))
         kill_button.grid(column=2, row=i)
         monitorWidgets.append(kill_button)
 
-        # Remove button
-        remove_button = ttk.Button(frame, text="Remove", command=lambda name=processName: removeProcessFromList(name))
+        #Remove Button
+        remove_button = ttk.Button(frame, text="Remove", command=lambda n=name: removeProcessFromList(n))
         remove_button.grid(column=3, row=i)
         monitorWidgets.append(remove_button)
 
-        # Store reference for status updates
-        monitoredProcessesLabels[processName] = {'label': status_label}
+        #Open Button
+        open_button = ttk.Button(frame, text="Open", command=lambda n=name, p=path: openProcessByName(n, p))
+        open_button.grid(column=4, row=i)
+        monitorWidgets.append(open_button)
+
+        monitoredProcessesLabels[name] = {'label': status_label}
+
     
     #Reposition Combobox / Add / Quit Button
     # Add dropdown and buttons BELOW the process rows
@@ -220,6 +283,7 @@ if __name__ == "__main__":
     rebuildMonitoredProcessWidgets()
 
     updateStatus()
+
     root.mainloop()
     
     
