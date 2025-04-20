@@ -16,3 +16,8 @@ ProcessKiller.ps1
 
 #Data
 data/
+
+#Builds
+build/
+ProcessKiller.spec
+ProcessPinner.spec

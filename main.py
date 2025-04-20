@@ -13,8 +13,12 @@ import subprocess
 import json
 import os 
 
+#Building
+import sys
+
 import psutil
 
+appName = "ProcessPinner"
 updateIntervall = 1 #in Seconds
 activeProcessesList = []
 monitoredProcessesLabels = {}
@@ -22,6 +26,12 @@ monitoredProcesses = []
 monitorWidgets = []
 monitoredProcessesFileLocation = "data/monitoredProcesses.json"
 
+#Builds
+def getResourcePath(relative_path: str) -> str:
+    ### Get absolute path to resource (for PyInstaller or dev). 
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
 
 def getListOfActiveProcesses() -> list[tuple[str, int]]:
     activeProcesses = []
@@ -100,6 +110,12 @@ def updateStatus() -> None:
     dropdown["values"] = uniqueNames
     #Intervall
     root.after(updateIntervall * 1000, updateStatus)
+
+def getUserDataPath(relative: str = "") -> str:
+    #Returns an absolute path under AppData/Local/AppName/.
+    base = os.path.join(os.getenv("LOCALAPPDATA"), appName)
+    os.makedirs(base, exist_ok=True)
+    return os.path.join(base, relative)
 
 #Loading / Saving
 def loadMonitoredProcessesFromFile() -> list[str]:
@@ -253,16 +269,19 @@ def rebuildMonitoredProcessWidgets() -> None:
 #Main
 if __name__ == "__main__":
     root = Tk()
-    root.title("Process Killer")
+    root.title(appName)
     #Icon
-    icon = PhotoImage(file = "assets/ico.png")
+    icon = PhotoImage(file = getResourcePath("assets/ico.png"))
     root.wm_iconphoto(False, icon)
 
+    #For Builds
+    monitoredProcessesFileLocation  = getUserDataPath() + "monitoredProcesses.json"
+    
     #Icons need existing root window
     icons = {
-    "On": PhotoImage(file="assets/On.png"),
-    "Off": PhotoImage(file="assets/Off.png"),
-    "Neutral": PhotoImage(file="assets/Neutral.png")
+    "On": PhotoImage(file=getResourcePath("assets/On.png")),
+    "Off": PhotoImage(file=getResourcePath("assets/Off.png")),
+    "Neutral": PhotoImage(file=getResourcePath("assets/Neutral.png"))
     }
 
     frame = ttk.Frame(root, padding=5) #padding = Rand
