@@ -17,8 +17,6 @@
 
 ##  Screenshots
 
-> 💡 To see images here, place them under `assets/` and adjust the paths accordingly.
-
 ![Main view](assets/screenshot1.png)  
 _Add running process to monitor_
 
